@@ -1,0 +1,17 @@
+[package]
+name = "diagram-editor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = "0.16.1"
+bevy_egui = "0.36.0"
+eframe = { version = "0.32.3", features = ["persistence", "serde"] }
+egui = "0.32.3"
+egui-probe = { version = "0.9.0", features = ["derive"] }
+egui-snarl = { version = "0.8.0", features = ["egui-probe", "serde"] }
+egui_extras = { version = "0.32.3", features = ["all_loaders"] }
+image = { version = "0.25.8", features = ["default-formats"] }
+serde = { version = "1.0.225", features = ["derive"] }
+serde_json = "1.0.145"
+syn = { version = "2.0.106", features = ["extra-traits"] }
