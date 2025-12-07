@@ -56,8 +56,10 @@ impl Default for Output {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Node {
     name: String,
-    inputs: Vec<Input>,
-    outputs: Vec<Output>,
+    next_input_port: usize,
+    next_output_port: usize,
+    inputs: HashMap<usize, Input>,
+    outputs: HashMap<usize, Output>,
     subsystem: Option<Rc<RefCell<Subsystem>>>,
 }
 
@@ -65,8 +67,10 @@ impl Default for Node {
     fn default() -> Self {
         Self {
             name: "Node".to_string(),
-            inputs: Vec::default(),
-            outputs: Vec::default(),
+            next_input_port: 0,
+            next_output_port: 0,
+            inputs: HashMap::default(),
+            outputs: HashMap::default(),
             subsystem: None,
         }
     }
@@ -117,11 +121,12 @@ impl SnarlViewer<Node> for DiagramViewer {
         snarl: &mut Snarl<Node>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
         let node = &mut snarl[pin.id.node];
-        ui.add_sized(
-            [200.0, 20.0],
-            egui::TextEdit::singleline(&mut node.inputs[pin.id.input].name),
-        );
-        PinInfo::square().with_wire_color(Color32::from_rgb(255, 0, 0))
+        if let Some(input) = node.inputs.get_mut(&pin.id.input) {
+            ui.add_sized([200.0, 20.0], egui::TextEdit::singleline(&mut input.name));
+            PinInfo::square().with_wire_color(Color32::from_rgb(255, 0, 0))
+        } else {
+            PinInfo::star()
+        }
     }
 
     fn show_output(
@@ -131,11 +136,12 @@ impl SnarlViewer<Node> for DiagramViewer {
         snarl: &mut Snarl<Node>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
         let node = &mut snarl[pin.id.node];
-        ui.add_sized(
-            [200.0, 20.0],
-            egui::TextEdit::singleline(&mut node.outputs[pin.id.output].name),
-        );
-        PinInfo::square().with_wire_color(Color32::from_rgb(0, 0, 255))
+        if let Some(output) = node.outputs.get_mut(&pin.id.output) {
+            ui.add_sized([200.0, 20.0], egui::TextEdit::singleline(&mut output.name));
+            PinInfo::square().with_wire_color(Color32::from_rgb(0, 0, 255))
+        } else {
+            PinInfo::star()
+        }
     }
 
     fn show_header(
@@ -154,8 +160,7 @@ impl SnarlViewer<Node> for DiagramViewer {
         if snarl.drop_inputs(pin.id) == 0
             && let Some(node) = snarl.get_node_mut(pin.id.node)
         {
-            // TODO: doing it this way crashes, we need to schedule the removal
-            node.inputs.remove(pin.id.input);
+            node.inputs.remove(&pin.id.input);
         }
     }
 
@@ -163,8 +168,7 @@ impl SnarlViewer<Node> for DiagramViewer {
         if snarl.drop_outputs(pin.id) == 0
             && let Some(node) = snarl.get_node_mut(pin.id.node)
         {
-            // TODO: doing it this way crashes, we need to schedule the removal
-            node.outputs.remove(pin.id.output);
+            node.outputs.remove(&pin.id.output);
         }
     }
 
@@ -186,12 +190,15 @@ impl SnarlViewer<Node> for DiagramViewer {
         ui.separator();
 
         if ui.button("Add Input").clicked() {
-            node.inputs.push(Input::default());
+            node.inputs.insert(node.next_input_port, Input::default());
+            node.next_input_port += 1;
             ui.close();
         }
 
         if ui.button("Add Output").clicked() {
-            node.outputs.push(Output::default());
+            node.outputs
+                .insert(node.next_output_port, Output::default());
+            node.next_output_port += 1;
             ui.close();
         }
 
@@ -274,7 +281,12 @@ impl SnarlViewer<Node> for DiagramViewer {
             // Create external input nodes internally
             let external_input_names = external_inputs
                 .iter()
-                .map(|(_, pin_in)| snarl[pin_in.node].inputs[pin_in.input].name.clone())
+                .filter_map(|(_, pin_in)| {
+                    snarl[pin_in.node]
+                        .inputs
+                        .get(&pin_in.input)
+                        .map(|n| n.name.clone())
+                })
                 .collect::<Vec<_>>();
 
             let external_input_nodes = external_input_names
@@ -289,8 +301,10 @@ impl SnarlViewer<Node> for DiagramViewer {
                         [0.0, n as f32 * 50.0].into(),
                         Node {
                             name: format!("Ext{}", n + 1),
-                            inputs: Vec::default(),
-                            outputs: vec![output],
+                            next_input_port: 0,
+                            next_output_port: 1,
+                            inputs: HashMap::default(),
+                            outputs: HashMap::from_iter([(0, output)]),
                             subsystem: None,
                         },
                     )
@@ -300,7 +314,12 @@ impl SnarlViewer<Node> for DiagramViewer {
             // Create external output nodes internally
             let external_output_names = external_outputs
                 .iter()
-                .map(|(pin_out, _)| snarl[pin_out.node].outputs[pin_out.output].name.clone())
+                .filter_map(|(pin_out, _)| {
+                    snarl[pin_out.node]
+                        .outputs
+                        .get(&pin_out.output)
+                        .map(|n| n.name.clone())
+                })
                 .collect::<Vec<_>>();
 
             let external_output_nodes = external_output_names
@@ -315,8 +334,10 @@ impl SnarlViewer<Node> for DiagramViewer {
                         [100.0, n as f32 * 50.0].into(),
                         Node {
                             name: format!("Ext{}", n + 1),
-                            inputs: vec![input],
-                            outputs: Vec::default(),
+                            next_input_port: 1,
+                            next_output_port: 0,
+                            inputs: HashMap::from_iter([(0, input)]),
+                            outputs: HashMap::default(),
                             subsystem: None,
                         },
                     )
